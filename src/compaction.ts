@@ -428,7 +428,9 @@ export async function summarize(
     const key = hashOf(transcript);
     const cached = await options.cache.get(key);
     if (cached !== undefined) {
-      partials.push(cached);
+      const sanitized = stripInternalSeparators(cached);
+      if (sanitized !== cached) await options.cache.set(key, sanitized);
+      partials.push(sanitized);
       continue;
     }
     options.onProgress?.(
@@ -489,7 +491,7 @@ export function buildChat(
       "",
       "# Earlier conversation state (compacted)",
       "",
-      options.summary,
+      stripInternalSeparators(options.summary),
     );
   }
   const chat = Chat.empty();

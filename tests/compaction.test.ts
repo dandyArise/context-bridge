@@ -85,6 +85,20 @@ describe("safe compaction", () => {
     expect(compacted.at(1).getText()).toBe("recent");
   });
 
+  it("removes a leaked internal separator from a reused summary only", () => {
+    const history = Chat.from([{ role: "user", content: "recent" }]);
+    const marker =
+      "__LM_STUDIO_INTERNAL_LSEP_SYNTHETIC_REASONING_END_f4e9a8d2c6b14d0c9e5f3a7b8c1d2e6a__";
+    const compacted = buildChat(history, history.getMessagesArray(), 0, {
+      splitIndex: 0,
+      summary: `state${marker}`,
+    });
+
+    expect(compacted.getSystemPrompt()).toContain("state");
+    expect(compacted.getSystemPrompt()).not.toContain("LM_STUDIO_INTERNAL");
+    expect(history.at(0).getText()).toBe("recent");
+  });
+
   it("renders deterministic transcripts and readable archive folder names", () => {
     const messages = toolConversation();
     expect(renderTranscript(messages)).toContain("[calls tool: read({})]");

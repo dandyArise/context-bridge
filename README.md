@@ -22,7 +22,8 @@ vLLM, LiteLLM, LM Studio Server, and similar endpoints.
   capped at half of smaller context windows.
 - Source-derived, chunk-cached summaries with context-aware chunk sizing and hierarchical merging.
 - MCP request/result pairs are never split; tool payload shape is preserved when text is capped.
-- Private LM Studio reasoning separators are removed from streamed output and stored summaries.
+- Private LM Studio reasoning separators are removed from compacted transcripts and cached summaries
+  without altering LM Studio's native reasoning-block presentation.
 - Optional local transcript/state archive with atomic writes.
 - Companion generator with OpenAI-compatible streaming, reasoning fragments, function calls,
   optional Bearer authentication, and cancellation.
@@ -118,8 +119,8 @@ pnpm run build
 
 Tests cover endpoint construction, Bearer-safe URL validation, tokenize response variants, the
 single-model request count, empty-model safe aggregation, MCP cut boundaries, edit invalidation,
-2K-context summary chunking, internal-separator filtering across stream boundaries, tool-shape
-preservation, and split SSE frames.
+2K-context summary chunking, persisted internal-separator cleanup, tool-shape preservation, and split
+SSE frames.
 
 ## Build
 

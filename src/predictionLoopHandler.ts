@@ -20,7 +20,6 @@ import {
 } from "./compaction";
 import { configSchematics, globalConfigSchematics } from "./config";
 import { isMaximumContextError, toOpenAIMessages } from "./externalApi";
-import { InternalSeparatorStreamFilter } from "./internalSeparator";
 import {
   isLocalLLM,
   measureContext,
@@ -345,8 +344,6 @@ async function runPrediction(
 
   let content: PredictionProcessContentBlockController | undefined;
   let reasoning: PredictionProcessContentBlockController | undefined;
-  let contentFilter = new InternalSeparatorStreamFilter();
-  let reasoningFilter = new InternalSeparatorStreamFilter();
   const callIds = new Map<string, number>();
   const callIdFor = (id?: string): number => {
     const key = id ?? `anonymous-${callIds.size}`;
@@ -358,39 +355,25 @@ async function runPrediction(
     return value;
   };
   const contentBlock = () => (content ??= ctl.createContentBlock());
-  const reasoningBlock = () =>
-    (reasoning ??= ctl.createContentBlock({ style: { type: "thinking" } }));
-  const flushFilters = () => {
-    const visibleContent = contentFilter.flush();
-    if (visibleContent !== "") contentBlock().appendText(visibleContent);
-    const visibleReasoning = reasoningFilter.flush();
-    if (visibleReasoning !== "") reasoningBlock().appendText(visibleReasoning);
-  };
 
   await source.act(chat, tools, {
     signal: ctl.abortSignal,
     onRoundStart: () => {
-      flushFilters();
-      contentFilter = new InternalSeparatorStreamFilter();
-      reasoningFilter = new InternalSeparatorStreamFilter();
       content = undefined;
       reasoning = undefined;
     },
     onPredictionFragment: (fragment) => {
       if (fragment.reasoningType === "reasoningStartTag") return;
       if (fragment.reasoningType === "reasoningEndTag") {
-        const trailing = reasoningFilter.flush();
-        if (trailing !== "") reasoningBlock().appendText(trailing);
         reasoning?.setStyle({ type: "thinking", ended: true });
         return;
       }
       if (fragment.reasoningType === "reasoning") {
-        const visible = reasoningFilter.push(fragment.content);
-        if (visible !== "") reasoningBlock().appendText(visible);
+        reasoning ??= ctl.createContentBlock({ style: { type: "thinking" } });
+        reasoning.appendText(fragment.content);
         return;
       }
-      const visible = contentFilter.push(fragment.content);
-      if (visible !== "") contentBlock().appendText(visible);
+      contentBlock().appendText(fragment.content);
     },
     onMessage: (message: ChatMessage) => {
       for (const request of message.getToolCallRequests()) {
@@ -418,5 +401,4 @@ async function runPrediction(
       }
     },
   });
-  flushFilters();
 }

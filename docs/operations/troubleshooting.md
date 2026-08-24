@@ -28,8 +28,9 @@ disable the plugin for dump-oriented work.
 ## Internal reasoning separator appears
 
 Strings beginning with `__LM_STUDIO_INTERNAL_LSEP_` are private LM Studio delimiters, not model
-content. Current bundles remove raw and Markdown-escaped forms from summaries, tool transcripts, and
-streamed content even when a delimiter spans multiple fragments.
+content. Current bundles remove raw, escaped, and Markdown-rendered forms from compacted transcripts
+and cached summaries. Prediction fragments remain untouched so LM Studio retains its native
+collapsible reasoning blocks and presentation.
 
 ## Provider authentication
 
