@@ -29,8 +29,9 @@ disable the plugin for dump-oriented work.
 
 Strings beginning with `__LM_STUDIO_INTERNAL_LSEP_` are private LM Studio delimiters, not model
 content. Current bundles remove raw, escaped, and Markdown-rendered forms from compacted transcripts
-and cached summaries. Prediction fragments remain untouched so LM Studio retains its native
-collapsible reasoning blocks and presentation.
+and cached summaries. During prediction, SDK fragments marked as reasoning are routed to LM Studio's
+native `thinking` content block; the structural end fragment is not rendered as answer text. This
+preserves the standard collapsible `Thought for ...` presentation, including chats without tools.
 
 ## Provider authentication
 

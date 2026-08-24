@@ -24,6 +24,8 @@ vLLM, LiteLLM, LM Studio Server, and similar endpoints.
 - MCP request/result pairs are never split; tool payload shape is preserved when text is capped.
 - Private LM Studio reasoning separators are removed from compacted transcripts and cached summaries
   without altering LM Studio's native reasoning-block presentation.
+- Local reasoning fragments use LM Studio's native collapsible `Thought for ...` block, including
+  predictions made without tools.
 - Optional local transcript/state archive with atomic writes.
 - Companion generator with OpenAI-compatible streaming, reasoning fragments, function calls,
   optional Bearer authentication, and cancellation.

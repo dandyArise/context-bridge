@@ -3,6 +3,7 @@ import {
   type Chat,
   type ChatMessage,
   type LLM,
+  type LLMPredictionFragment,
   type PredictionLoopHandlerController,
   type PredictionProcessContentBlockController,
 } from "@lmstudio/sdk";
@@ -325,44 +326,27 @@ async function prepareChat(
   }
 }
 
-async function runPrediction(
-  ctl: PredictionLoopHandlerController,
-  source: TokenSource,
-  chat: Chat,
-  tools: SessionTool[],
-): Promise<void> {
-  if (tools.length === 0) {
-    const block = ctl.createContentBlock();
-    if (isLocalLLM(source)) {
-      await block.pipeFrom(source.respond(chat, { signal: ctl.abortSignal }));
-    } else {
-      const result = await source.respond(chat, { signal: ctl.abortSignal });
-      block.appendText(result.content);
-    }
-    return;
-  }
+interface NativePredictionBlocks {
+  beginRound: () => void;
+  contentBlock: () => PredictionProcessContentBlockController;
+  appendFragment: (fragment: LLMPredictionFragment) => void;
+}
 
+function createNativePredictionBlocks(
+  ctl: PredictionLoopHandlerController,
+): NativePredictionBlocks {
   let content: PredictionProcessContentBlockController | undefined;
   let reasoning: PredictionProcessContentBlockController | undefined;
-  const callIds = new Map<string, number>();
-  const callIdFor = (id?: string): number => {
-    const key = id ?? `anonymous-${callIds.size}`;
-    let value = callIds.get(key);
-    if (value === undefined) {
-      value = callIds.size;
-      callIds.set(key, value);
-    }
-    return value;
-  };
+
   const contentBlock = () => (content ??= ctl.createContentBlock());
 
-  await source.act(chat, tools, {
-    signal: ctl.abortSignal,
-    onRoundStart: () => {
+  return {
+    beginRound: () => {
       content = undefined;
       reasoning = undefined;
     },
-    onPredictionFragment: (fragment) => {
+    contentBlock,
+    appendFragment: (fragment) => {
       if (fragment.reasoningType === "reasoningStartTag") return;
       if (fragment.reasoningType === "reasoningEndTag") {
         reasoning?.setStyle({ type: "thinking", ended: true });
@@ -375,9 +359,58 @@ async function runPrediction(
       }
       contentBlock().appendText(fragment.content);
     },
+  };
+}
+
+export async function runPrediction(
+  ctl: PredictionLoopHandlerController,
+  source: TokenSource,
+  chat: Chat,
+  tools: SessionTool[],
+): Promise<void> {
+  const blocks = createNativePredictionBlocks(ctl);
+
+  if (tools.length === 0) {
+    blocks.beginRound();
+    if (isLocalLLM(source)) {
+      const result = await source.respond(chat, {
+        signal: ctl.abortSignal,
+        onPredictionFragment: blocks.appendFragment,
+      });
+      blocks.contentBlock().attachGenInfo({
+        indexedModelIdentifier: result.modelInfo.path,
+        identifier: result.modelInfo.identifier,
+        loadModelConfig: result.loadConfig,
+        predictionConfig: result.predictionConfig,
+        stats: result.stats,
+      });
+      ctl.abortSignal.throwIfAborted();
+    } else {
+      await source.respond(chat, {
+        signal: ctl.abortSignal,
+        onPredictionFragment: blocks.appendFragment,
+      });
+    }
+    return;
+  }
+
+  const callIds = new Map<string, number>();
+  const callIdFor = (id?: string): number => {
+    const key = id ?? `anonymous-${callIds.size}`;
+    let value = callIds.get(key);
+    if (value === undefined) {
+      value = callIds.size;
+      callIds.set(key, value);
+    }
+    return value;
+  };
+  await source.act(chat, tools, {
+    signal: ctl.abortSignal,
+    onRoundStart: blocks.beginRound,
+    onPredictionFragment: blocks.appendFragment,
     onMessage: (message: ChatMessage) => {
       for (const request of message.getToolCallRequests()) {
-        contentBlock().appendToolRequest({
+        blocks.contentBlock().appendToolRequest({
           callId: callIdFor(request.id),
           ...(request.id === undefined
             ? {}
