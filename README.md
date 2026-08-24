@@ -64,8 +64,12 @@ Global settings, persisted by LM Studio:
 
 The integration's per-chat settings include external model ID, context-limit override,
 `16,000`-token reserve, compaction trigger, verbatim tail, summary chunk size, tool cap, and archive
-folder. The generator companion owns temperature and maximum-output settings. Configure the same
-endpoint, API key, and model ID in both artifacts. A zero context override requires
+folder. After selecting the generator companion, open the chat configuration tab (sliders icon) to
+set its model ID, temperature, and maximum-output settings; its plugin-wide endpoint and optional
+Bearer key are shown once in the same panel. Configure the same endpoint, API key, and model ID in
+both artifacts. An empty generator model ID auto-selects the model only when `/v1/models` returns
+exactly one ID; otherwise the error lists the available IDs so no arbitrary model is used. A zero
+context override requires
 `/llm/tokenize` or model metadata to report the limit. The reserve lowers the external compaction
 ceiling; for local LM Studio models it protects output/tool capacity without changing the original
 full-context compaction threshold.
