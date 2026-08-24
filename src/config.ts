@@ -58,7 +58,7 @@ export const configSchematics = createConfigSchematics()
     {
       displayName: "Reserved context",
       subtitle:
-        "External generators reserve it before compaction; local models keep their original trigger and reserve it for output/tools.",
+        "Reserved for output/tools and automatically capped at half of smaller model contexts.",
       int: true,
       min: 1000,
       max: 262144,
@@ -89,7 +89,7 @@ export const configSchematics = createConfigSchematics()
       max: 131072,
       displayName: "Recent context kept verbatim",
       subtitle:
-        "Token budget at the end of the conversation that is never summarized.",
+        "Preferred tail budget; automatically reduced when the active model context is smaller.",
       step: 500,
     },
     6000,
@@ -102,7 +102,8 @@ export const configSchematics = createConfigSchematics()
       min: 2000,
       max: 131072,
       displayName: "Summarize in chunks of",
-      subtitle: "Tokens of original history per cached summary.",
+      subtitle:
+        "Preferred history size per summary; automatically reduced to fit the active model context.",
       step: 1000,
     },
     16000,

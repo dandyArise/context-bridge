@@ -217,7 +217,13 @@ async function prepareChat(
   const splitIndex = await findSplitIndex(
     messages,
     systemCount,
-    config.get("keepRecentTokens"),
+    Math.max(
+      256,
+      Math.min(
+        config.get("keepRecentTokens"),
+        Math.floor(measurement.limit / 2),
+      ),
+    ),
     measurement.countMessage,
   );
   if (splitIndex < 0) {
@@ -241,6 +247,7 @@ async function prepareChat(
       signal: ctl.abortSignal,
       cache: createCache(vaultPath),
       chunkTokens: config.get("chunkTokens"),
+      rawContextTokens: measurement.rawLimit,
       countTokens: measurement.countMessage,
       onProgress: (text) => announcement?.replaceText(text),
     });

@@ -10,7 +10,15 @@ limit.
 
 ## Context limit absent
 
-Set the override to the actual deployed `max_model_len`. The reserve must be smaller than that limit.
+Set the override to the actual deployed `max_model_len`. The integration automatically caps the
+requested reserve at half of that limit.
+
+## Summary request exceeds context
+
+The integration reads the loaded local model context length and reduces its summary chunk, output,
+and verbatim-tail budgets accordingly. A `request (...) exceeds ... n_ctx` error from an older bundle
+means the fixed chunk size exceeded the summarizer context; rebuild and reinstall both artifacts with
+`scripts\install-all.ps1`.
 
 ## Repeated compaction
 

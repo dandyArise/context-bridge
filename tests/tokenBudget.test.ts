@@ -1,6 +1,10 @@
 import { Chat, type LLM } from "@lmstudio/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { measureExternal, measureLocal } from "../src/tokenBudget";
+import {
+  effectiveReserve,
+  measureExternal,
+  measureLocal,
+} from "../src/tokenBudget";
 
 const chat = Chat.from([{ role: "user", content: "hello" }]);
 const options = {
@@ -122,7 +126,7 @@ describe("external generator measurement", () => {
 });
 
 describe("local LM Studio measurement", () => {
-  it("keeps the original full-context compaction limit", async () => {
+  it("keeps the original full-context trigger and safely caps the reserve", async () => {
     const source = {
       applyPromptTemplate: () => Promise.resolve("rendered prompt"),
       getContextLength: () => Promise.resolve(8192),
@@ -133,7 +137,12 @@ describe("local LM Studio measurement", () => {
       used: 4000,
       rawLimit: 8192,
       limit: 8192,
-      reserve: 16000,
+      reserve: 4096,
     });
+  });
+
+  it("retains half of a small model context for prompt input", () => {
+    expect(effectiveReserve(2048, 16000)).toBe(1024);
+    expect(effectiveReserve(131072, 16000)).toBe(16000);
   });
 });

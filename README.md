@@ -18,8 +18,9 @@ vLLM, LiteLLM, LM Studio Server, and similar endpoints.
   combination (largest observed prompt and smallest known context window).
 - Optional `/v1/model/info` enrichment for tool choice, function calling, response schema, web,
   reasoning, and vision capabilities; unsupported providers fall back to `/v1/models`.
-- Configurable hard context override and configurable reserve (`16,000` tokens by default).
-- Source-derived, chunk-cached summaries; summaries are never recursively summarized.
+- Configurable hard context override and configurable reserve (`16,000` tokens by default), safely
+  capped at half of smaller context windows.
+- Source-derived, chunk-cached summaries with context-aware chunk sizing and hierarchical merging.
 - MCP request/result pairs are never split; tool payload shape is preserved when text is capped.
 - Optional local transcript/state archive with atomic writes.
 - Companion generator with OpenAI-compatible streaming, reasoning fragments, function calls,
@@ -34,6 +35,9 @@ tokenizer. Other generator handles call the configured external `/llm/tokenize` 
 separate `openai-compatible-generator` artifact streams `/v1/chat/completions`. This split is required
 because LM Studio hides generator plugins from Integrations and exposes them as models. The
 displayed chat is never modified; only the prompt copy passed to the selected model is rebuilt.
+This follows [LM Studio's documented fit check](https://lmstudio.ai/docs/python/model-info/get-context-length):
+render the chat with the model prompt template, count its tokens, and compare that count with the
+loaded model's context length.
 
 See [architecture-overview.md](docs/architecture/architecture-overview.md).
 
@@ -76,9 +80,11 @@ both artifacts. For `http://127.0.0.1:1234/v1`, the ID must match a model alread
 Studio so its native tokenizer can be used. An empty generator model ID auto-selects the model only
 when `/v1/models` returns exactly one ID; otherwise the error lists the available IDs so no
 arbitrary model is used. A zero context override requires the local loaded model, `/llm/tokenize`,
-or model metadata to report the limit. The reserve lowers the external compaction
+or model metadata to report the limit. The requested reserve is automatically capped at half of the
+active model context, so the `16,000` default remains usable with 2K/8K models. It lowers the external compaction
 ceiling; for local LM Studio models it protects output/tool capacity without changing the original
-full-context compaction threshold.
+full-context compaction threshold. The verbatim tail and summary chunks are also reduced
+automatically when they cannot fit the loaded model.
 
 List model IDs, context sizes, tokenizer availability, and advertised capabilities without placing
 the key on the command line:
@@ -111,7 +117,7 @@ pnpm run build
 
 Tests cover endpoint construction, Bearer-safe URL validation, tokenize response variants, the
 single-model request count, empty-model safe aggregation, MCP cut boundaries, edit invalidation,
-tool-shape preservation, and split SSE frames.
+2K-context summary chunking, tool-shape preservation, and split SSE frames.
 
 ## Build
 
@@ -130,7 +136,9 @@ port.
   ID of an already loaded model in both plugins; otherwise the provider must expose the tokenizer
   contract.
 - `did not publish a context limit`: set `External context limit override` to the deployed limit.
-- `maximum context length`: increase the reserve or lower the verbatim tail/tool-result ceiling.
+- `maximum context length` while summarizing: update/reinstall the plugin; current releases derive
+  summary chunks from the loaded context length. If it occurs during the final reply, lower the
+  verbatim tail or tool-result ceiling.
 - No tools: verify tool plugins are enabled for that chat; Context Compactor reports refused sessions.
 - A plugin spins indefinitely or disappears after installing its companion: confirm
   `C:\Users\<you>\.lmstudio\.internal\utils\node.exe` exists, run `scripts\install-all.ps1`, then

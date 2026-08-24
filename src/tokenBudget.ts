@@ -35,14 +35,28 @@ export function isLocalLLM(source: TokenSource): source is LLM {
   );
 }
 
-function effectiveLimit(rawLimit: number, reserve: number): number {
-  const limit = rawLimit - reserve;
-  if (limit <= 0) {
-    throw new Error(
-      `Reserved context (${reserve}) must be smaller than the model context length (${rawLimit}).`,
-    );
+export function effectiveReserve(
+  rawLimit: number,
+  requestedReserve: number,
+): number {
+  if (!Number.isFinite(rawLimit) || rawLimit <= 0) {
+    throw new Error(`Invalid model context length: ${rawLimit}.`);
   }
-  return limit;
+  if (!Number.isFinite(requestedReserve) || requestedReserve < 0) {
+    throw new Error(`Invalid reserved context: ${requestedReserve}.`);
+  }
+
+  // A large default is useful for wide-context models but must not make a
+  // smaller local or external model unusable. Always retain at least half of
+  // the context for the prompt and compacted state.
+  return Math.min(
+    Math.floor(requestedReserve),
+    Math.max(1, Math.floor(rawLimit / 2)),
+  );
+}
+
+function effectiveLimit(rawLimit: number, reserve: number): number {
+  return rawLimit - reserve;
 }
 
 export async function measureLocal(
@@ -55,10 +69,11 @@ export async function measureLocal(
     source.getContextLength(),
   ]);
   const used = await source.countTokens(rendered);
+  const reserve = effectiveReserve(rawLimit, reserveTokens);
   return {
     used,
     rawLimit,
-    reserve: reserveTokens,
+    reserve,
     // Keep the original LM Studio compaction threshold. The configurable reserve is
     // applied to tool-result capacity, while external generators reserve it before dispatch.
     limit: rawLimit,
@@ -104,11 +119,12 @@ export async function measureExternal(
           ? options.contextLimitOverride
           : detectedRawLimit;
       const used = await localModel.countTokens(rendered);
+      const reserve = effectiveReserve(rawLimit, options.reserveTokens);
       return {
         used,
         rawLimit,
-        reserve: options.reserveTokens,
-        limit: effectiveLimit(rawLimit, options.reserveTokens),
+        reserve,
+        limit: effectiveLimit(rawLimit, reserve),
         modelCount: 1,
         countMessage: (message) => localModel.countTokens(message.getText()),
       };
@@ -129,11 +145,12 @@ export async function measureExternal(
       );
     }
     const charsPerToken = renderedLength(messages) / result.used;
+    const reserve = effectiveReserve(rawLimit, options.reserveTokens);
     return {
       used: result.used,
       rawLimit,
-      reserve: options.reserveTokens,
-      limit: effectiveLimit(rawLimit, options.reserveTokens),
+      reserve,
+      limit: effectiveLimit(rawLimit, reserve),
       modelCount: 1,
       countMessage: proportionalCounter(charsPerToken),
     };
@@ -172,11 +189,12 @@ export async function measureExternal(
   }
 
   const charsPerToken = renderedLength(messages) / used;
+  const reserve = effectiveReserve(rawLimit, options.reserveTokens);
   return {
     used,
     rawLimit,
-    reserve: options.reserveTokens,
-    limit: effectiveLimit(rawLimit, options.reserveTokens),
+    reserve,
+    limit: effectiveLimit(rawLimit, reserve),
     modelCount: models.length,
     countMessage: proportionalCounter(charsPerToken),
   };
