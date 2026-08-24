@@ -25,6 +25,12 @@ means the fixed chunk size exceeded the summarizer context; rebuild and reinstal
 Large tool dumps or bulk-data analysis do not compress well. Lower tool results, request ranges, or
 disable the plugin for dump-oriented work.
 
+## Internal reasoning separator appears
+
+Strings beginning with `__LM_STUDIO_INTERNAL_LSEP_` are private LM Studio delimiters, not model
+content. Current bundles remove raw and Markdown-escaped forms from summaries, tool transcripts, and
+streamed content even when a delimiter spans multiple fragments.
+
 ## Provider authentication
 
 401/403 indicates a missing/invalid protected API key. The key is never printed by the plugin.

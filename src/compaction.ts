@@ -1,6 +1,7 @@
 import { Chat, type ChatMessage } from "@lmstudio/sdk";
 import { createHash } from "node:crypto";
 import type { SummaryCache } from "./cache";
+import { stripInternalSeparators } from "./internalSeparator";
 import { isLocalLLM, type TokenSource } from "./tokenBudget";
 
 export function hashOf(content: string): string {
@@ -73,7 +74,7 @@ export function renderTranscript(messages: ChatMessage[]): string {
   return messages
     .map((message) => {
       const parts = [`### ${message.getRole()}`];
-      const text = message.getText().trim();
+      const text = stripInternalSeparators(message.getText()).trim();
       if (text !== "") parts.push(text);
       for (const call of message.getToolCallRequests()) {
         parts.push(
@@ -81,7 +82,9 @@ export function renderTranscript(messages: ChatMessage[]): string {
         );
       }
       for (const result of message.getToolCallResults()) {
-        parts.push(`[tool result: ${String(result.content)}]`);
+        parts.push(
+          `[tool result: ${stripInternalSeparators(String(result.content))}]`,
+        );
       }
       return parts.join("\n");
     })
@@ -139,7 +142,7 @@ async function respond(
     Chat.from([{ role: "user", content: prompt }]),
     { signal, maxTokens },
   );
-  return result.content.trim();
+  return stripInternalSeparators(result.content).trim();
 }
 
 function splitAtReadableBoundary(text: string, limit: number): number {
