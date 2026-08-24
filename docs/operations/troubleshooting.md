@@ -23,3 +23,11 @@ disable the plugin for dump-oriented work.
 
 Enable the relevant tool plugins per chat. Context Bridge reports a refused or empty tool session
 instead of silently pretending tool use succeeded.
+
+## Plugin spins or companion disappears
+
+LM Studio 0.4.21 may replace a locally installed sibling plugin under the same owner when two raw
+`lms dev --install` commands run sequentially. It may also log `spawn ...node.exe ENOENT` when an
+installation races LM Studio's first-start runtime extraction. Wait until
+`%USERPROFILE%\.lmstudio\.internal\utils\node.exe` exists, run `scripts\install-all.ps1`, and restart
+LM Studio once. The installer verifies both manifests and both production bundles before returning.

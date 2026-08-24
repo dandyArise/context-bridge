@@ -48,6 +48,10 @@ pnpm run verify
 .\scripts\install-all.ps1
 ```
 
+Keep LM Studio open and fully initialized while running the installer, then restart it once. The
+script preserves both plugin bundles despite the LM Studio 0.4.21 local installer's same-owner
+replacement behavior.
+
 Enable `dandyarise/context-bridge` in Integrations. Keep a normal local model selected for the local
 path, or select `dandyarise/context-bridge-external` in the model dropdown for an external endpoint.
 
@@ -117,6 +121,9 @@ port.
 - `did not publish a context limit`: set `External context limit override` to the deployed limit.
 - `maximum context length`: increase the reserve or lower the verbatim tail/tool-result ceiling.
 - No tools: verify tool plugins are enabled for that chat; Context Bridge reports refused sessions.
+- A plugin spins indefinitely or disappears after installing its companion: confirm
+  `C:\Users\<you>\.lmstudio\.internal\utils\node.exe` exists, run `scripts\install-all.ps1`, then
+  restart LM Studio. Do not install the two repositories sequentially with raw `lms dev --install`.
 
 See [troubleshooting.md](docs/operations/troubleshooting.md).
 
