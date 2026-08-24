@@ -3,8 +3,10 @@
 ## Tokenizer endpoint missing
 
 If `/llm/tokenize` returns “Unexpected endpoint or method,” external compaction cannot obtain an
-authoritative count. Use a compatible vLLM bridge or the local-model path. Do not substitute a
-guessed limit.
+authoritative count from that provider. For `http://127.0.0.1:1234`, configure the exact ID of a
+model already loaded in LM Studio so Context Compactor can use its native SDK tokenizer. Otherwise use
+a compatible vLLM bridge or the directly selected local-model path. Do not substitute a guessed
+limit.
 
 ## Context limit absent
 
@@ -21,7 +23,7 @@ disable the plugin for dump-oriented work.
 
 ## Tools unavailable
 
-Enable the relevant tool plugins per chat. Context Bridge reports a refused or empty tool session
+Enable the relevant tool plugins per chat. Context Compactor reports a refused or empty tool session
 instead of silently pretending tool use succeeded.
 
 ## Plugin spins or companion disappears

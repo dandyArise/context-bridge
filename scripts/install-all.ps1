@@ -5,13 +5,15 @@ $generatorRoot = Join-Path (Split-Path -Parent $integrationRoot) "context-bridge
 $lmStudioRoot = Join-Path $env:USERPROFILE ".lmstudio"
 $runtimeNode = Join-Path $lmStudioRoot ".internal\utils\node.exe"
 $installedOwnerRoot = Join-Path $lmStudioRoot "extensions\plugins\dandyarise"
-$installedIntegrationRoot = Join-Path $installedOwnerRoot "context-bridge"
-$installedGeneratorRoot = Join-Path $installedOwnerRoot "context-bridge-external"
-$stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("context-bridge-install-" + [guid]::NewGuid().ToString("N"))
-$stagedGeneratorRoot = Join-Path $stagingRoot "context-bridge-external"
+$installedIntegrationRoot = Join-Path $installedOwnerRoot "context-compactor"
+$installedGeneratorRoot = Join-Path $installedOwnerRoot "openai-compatible-generator"
+$legacyIntegrationRoot = Join-Path $installedOwnerRoot "context-bridge"
+$legacyGeneratorRoot = Join-Path $installedOwnerRoot "context-bridge-external"
+$stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("context-plugins-install-" + [guid]::NewGuid().ToString("N"))
+$stagedGeneratorRoot = Join-Path $stagingRoot "openai-compatible-generator"
 
 if (-not (Test-Path -LiteralPath (Join-Path $generatorRoot "manifest.json"))) {
-  throw "Context Bridge External was not found at $generatorRoot"
+  throw "OpenAI-Compatible Generator was not found at $generatorRoot"
 }
 
 if (-not (Test-Path -LiteralPath $runtimeNode -PathType Leaf)) {
@@ -28,19 +30,31 @@ function Install-Plugin([string] $pluginRoot, [string] $displayName) {
   }
 }
 
+function Remove-LegacyPlugin([string] $pluginRoot) {
+  $resolvedOwnerRoot = [System.IO.Path]::GetFullPath($installedOwnerRoot).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+  $resolvedPluginRoot = [System.IO.Path]::GetFullPath($pluginRoot)
+  $resolvedParent = [System.IO.Path]::GetDirectoryName($resolvedPluginRoot)
+  if (-not $resolvedParent.Equals($resolvedOwnerRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to remove a legacy plugin outside $resolvedOwnerRoot"
+  }
+  if (Test-Path -LiteralPath $resolvedPluginRoot) {
+    Remove-Item -LiteralPath $resolvedPluginRoot -Recurse -Force
+  }
+}
+
 New-Item -ItemType Directory -Path $stagingRoot | Out-Null
 try {
   # LM Studio 0.4.21's local installer replaces sibling plugins under the same owner.
   # Stage the generated companion bundle outside that owner before installing the integration.
-  Install-Plugin $generatorRoot "Context Bridge External"
+  Install-Plugin $generatorRoot "OpenAI-Compatible Generator"
   if (-not (Test-Path -LiteralPath (Join-Path $installedGeneratorRoot ".lmstudio\production.js") -PathType Leaf)) {
-    throw "Context Bridge External was installed without a production bundle."
+    throw "OpenAI-Compatible Generator was installed without a production bundle."
   }
   Copy-Item -LiteralPath $installedGeneratorRoot -Destination $stagedGeneratorRoot -Recurse
 
-  Install-Plugin $integrationRoot "Context Bridge integration"
+  Install-Plugin $integrationRoot "Context Compactor integration"
   if (-not (Test-Path -LiteralPath (Join-Path $installedIntegrationRoot ".lmstudio\production.js") -PathType Leaf)) {
-    throw "Context Bridge integration was installed without a production bundle."
+    throw "Context Compactor integration was installed without a production bundle."
   }
 
   if (-not (Test-Path -LiteralPath $installedGeneratorRoot)) {
@@ -56,6 +70,9 @@ try {
       throw "Installed plugin production bundle missing at $installedRoot"
     }
   }
+
+  Remove-LegacyPlugin $legacyIntegrationRoot
+  Remove-LegacyPlugin $legacyGeneratorRoot
 } finally {
   $resolvedTempRoot = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
   $resolvedStagingRoot = [System.IO.Path]::GetFullPath($stagingRoot)
@@ -65,5 +82,5 @@ try {
   }
 }
 
-Write-Host "Installed dandyarise/context-bridge and dandyarise/context-bridge-external."
+Write-Host "Installed dandyarise/context-compactor and dandyarise/openai-compatible-generator."
 Write-Host "Restart LM Studio once so it rescans both installed plugins."

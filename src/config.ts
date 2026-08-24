@@ -7,10 +7,10 @@ export const globalConfigSchematics = createConfigSchematics()
     {
       displayName: "External OpenAI-compatible endpoint",
       subtitle:
-        "Base URL including /v1. Used for /v1/models discovery and /llm/tokenize when the selected model is external.",
-      placeholder: "http://127.0.0.1:8000/v1",
+        "Base URL including /v1. Local LM Studio uses its native tokenizer; other external generators use /llm/tokenize.",
+      placeholder: "http://127.0.0.1:1234/v1",
     },
-    "http://127.0.0.1:8000/v1",
+    "http://127.0.0.1:1234/v1",
   )
   .field(
     "externalApiKey",
@@ -44,7 +44,7 @@ export const configSchematics = createConfigSchematics()
     {
       displayName: "External context limit override",
       subtitle:
-        "0 uses model metadata or /llm/tokenize. A positive value is a hard safety ceiling.",
+        "0 uses the local LM Studio model, provider metadata, or /llm/tokenize. A positive value is a hard safety ceiling.",
       int: true,
       min: 0,
       max: 4_000_000,

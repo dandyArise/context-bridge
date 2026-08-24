@@ -3,8 +3,8 @@ const STRUCTURAL_STRING_MAX = 200;
 
 function notice(kept: number, total: number): string {
   return kept === 0
-    ? `[context-bridge: no context remains for this tool output; ${total} characters were dropped. The tool itself ran.]`
-    : `\n\n[Truncated by context-bridge: kept ${kept} of ${total} characters. Ask for a smaller range instead of repeating the call.]`;
+    ? `[context-compactor: no context remains for this tool output; ${total} characters were dropped. The tool itself ran.]`
+    : `\n\n[Truncated by context-compactor: kept ${kept} of ${total} characters. Ask for a smaller range instead of repeating the call.]`;
 }
 
 function capDeep(value: unknown, budget: { left: number }): unknown {

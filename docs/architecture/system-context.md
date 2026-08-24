@@ -3,7 +3,7 @@
 ```mermaid
 flowchart LR
   User[LM Studio user] --> LMS[LM Studio chat]
-  LMS --> Plugin[Context Bridge plugin]
+  LMS --> Plugin[Context Compactor integration]
   Plugin --> Local[Local LM Studio model]
   Plugin --> External[Configured OpenAI-compatible endpoint]
   Plugin --> Archive[(Optional local archive)]

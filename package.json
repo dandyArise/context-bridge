@@ -1,5 +1,5 @@
 {
-  "name": "lms-plugin-context-bridge",
+  "name": "lms-plugin-context-compactor",
   "version": "0.1.0",
   "description": "LM Studio context compaction integration with external-generator token budgeting.",
   "type": "commonjs",

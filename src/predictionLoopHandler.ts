@@ -1,8 +1,10 @@
-import type {
-  Chat,
-  ChatMessage,
-  PredictionLoopHandlerController,
-  PredictionProcessContentBlockController,
+import {
+  LMStudioClient,
+  type Chat,
+  type ChatMessage,
+  type LLM,
+  type PredictionLoopHandlerController,
+  type PredictionProcessContentBlockController,
 } from "@lmstudio/sdk";
 import { archive, loadRecord, saveRecord } from "./archive";
 import { createCache } from "./cache";
@@ -37,24 +39,76 @@ interface PreparedChat {
   measurement: ContextMeasurement;
 }
 
+let lmStudioClient: LMStudioClient | undefined;
+
+function isDefaultLocalLmStudioEndpoint(endpoint: string): boolean {
+  try {
+    const url = new URL(endpoint);
+    const localHost =
+      url.hostname === "127.0.0.1" ||
+      url.hostname === "localhost" ||
+      url.hostname === "[::1]";
+    return localHost && url.port === "1234";
+  } catch {
+    return false;
+  }
+}
+
+async function resolveLoadedLocalModel(
+  modelId: string,
+): Promise<LLM | undefined> {
+  lmStudioClient ??= new LMStudioClient();
+  const models = await lmStudioClient.llm.listLoaded();
+  for (const model of models) {
+    const info = await model.getModelInfo();
+    if (info.identifier === modelId || info.modelKey === modelId) return model;
+  }
+  return undefined;
+}
+
 function estimateUsed(original: Chat, next: Chat, measured: number): number {
   const before = Math.max(1, JSON.stringify(toOpenAIMessages(original)).length);
   const after = JSON.stringify(toOpenAIMessages(next)).length;
   return Math.max(1, Math.ceil((measured * after) / before));
 }
 
+export function contextMeasurementFailureText(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/reserved context/i.test(message)) return message;
+  if (/fetch failed|ECONNREFUSED|cannot connect/i.test(message)) {
+    return "Context measurement failed: the external endpoint is unreachable. Check its URL, port, and server state.";
+  }
+  if (/\/llm\/tokenize|token count|tokenization/i.test(message)) {
+    return "Context measurement failed: no compatible tokenizer is available. For local LM Studio, configure the exact ID of a loaded model; for vLLM, expose /llm/tokenize.";
+  }
+  return "Context measurement failed. Check the external endpoint, Model ID, context limit, and reserved tokens.";
+}
+
 function externalOptions(ctl: PredictionLoopHandlerController) {
   const config = ctl.getPluginConfig(configSchematics);
   const globalConfig = ctl.getGlobalPluginConfig(globalConfigSchematics);
+  const endpoint = globalConfig.get("externalEndpoint");
   return {
     connection: {
-      endpoint: globalConfig.get("externalEndpoint"),
+      endpoint,
       apiKey: globalConfig.get("externalApiKey"),
     },
     model: config.get("externalModel"),
     contextLimitOverride: config.get("contextLimitOverride"),
     reserveTokens: config.get("reserveTokens"),
     signal: ctl.abortSignal,
+    ...(isDefaultLocalLmStudioEndpoint(endpoint)
+      ? {
+          localModelResolver: async (modelId: string) => {
+            try {
+              return await resolveLoadedLocalModel(modelId);
+            } catch (error) {
+              ctl.debug("Local LM Studio tokenizer lookup failed:", error);
+              return undefined;
+            }
+          },
+        }
+      : {}),
   };
 }
 
@@ -63,7 +117,17 @@ export async function handlePredictionLoop(
 ): Promise<void> {
   const history = await ctl.pullHistory();
   const source = await ctl.tokenSource();
-  const prepared = await prepareChat(ctl, source, history);
+  let prepared: PreparedChat;
+  try {
+    prepared = await prepareChat(ctl, source, history);
+  } catch (error) {
+    ctl.debug("Context measurement failed:", error);
+    ctl.createStatus({
+      status: "error",
+      text: contextMeasurementFailureText(error),
+    });
+    return;
+  }
   let session: ToolUseSession | undefined;
   let tools: SessionTool[] = [];
   try {

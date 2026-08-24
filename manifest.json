@@ -2,6 +2,6 @@
   "type": "plugin",
   "runner": "node",
   "owner": "dandyarise",
-  "name": "context-bridge",
+  "name": "context-compactor",
   "revision": 1
 }

@@ -24,7 +24,7 @@ export async function discoverCommand(
     try {
       tokenizerContext = (
         await tokenizeExternal(connection, model.id, [
-          { role: "user", content: "Context Bridge discovery probe." },
+          { role: "user", content: "Context Compactor discovery probe." },
         ])
       ).contextLength;
     } catch {

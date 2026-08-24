@@ -12,6 +12,38 @@ const options = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("external generator measurement", () => {
+  it("uses the native LM Studio tokenizer for a matching local server model", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const localModel = {
+      applyPromptTemplate: () => Promise.resolve("rendered local prompt"),
+      getContextLength: () => Promise.resolve(8192),
+      countTokens: (text: string) =>
+        Promise.resolve(text === "rendered local prompt" ? 900 : 12),
+    } as unknown as LLM;
+
+    const result = await measureExternal(chat, {
+      ...options,
+      connection: { endpoint: "http://127.0.0.1:1234/v1", apiKey: "" },
+      model: "local-model",
+      reserveTokens: 1000,
+      localModelResolver: (modelId) =>
+        Promise.resolve(modelId === "local-model" ? localModel : undefined),
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      used: 900,
+      rawLimit: 8192,
+      limit: 7192,
+      reserve: 1000,
+      modelCount: 1,
+    });
+    await expect(
+      result.countMessage(chat.getMessagesArray()[0]!),
+    ).resolves.toBe(12);
+  });
+
   it("uses exactly one tokenize call when a model is configured", async () => {
     const fetchMock = vi.fn(
       (input: string | URL | Request, init?: RequestInit) => {

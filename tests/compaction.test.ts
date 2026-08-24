@@ -96,7 +96,7 @@ describe("safe compaction", () => {
       20,
     ) as { content: Array<{ type: string; text: string }>; ok: boolean };
     expect(capped.content[0]?.type).toBe("text");
-    expect(capped.content[0]?.text).toContain("Truncated by context-bridge");
+    expect(capped.content[0]?.text).toContain("Truncated by context-compactor");
     expect(capped.ok).toBe(true);
   });
 });

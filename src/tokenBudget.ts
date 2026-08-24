@@ -23,6 +23,7 @@ export interface ExternalMeasurementOptions {
   contextLimitOverride: number;
   reserveTokens: number;
   signal?: AbortSignal;
+  localModelResolver?: (modelId: string) => Promise<LLM | undefined>;
 }
 
 export function isLocalLLM(source: TokenSource): source is LLM {
@@ -78,10 +79,11 @@ function proportionalCounter(charsPerToken: number) {
 }
 
 /**
- * Generator handles expose no tokenizer or context length through the plugin SDK. The external
- * vLLM-compatible endpoint is therefore authoritative. With an explicit model this performs one
- * /llm/tokenize request. Without one it discovers /v1/models, tokenizes against every model once,
- * and combines the largest observed usage with the smallest known context limit.
+ * Generator handles expose no tokenizer or context length directly. A generator targeting the
+ * default local LM Studio server can resolve the configured loaded model and reuse its native
+ * tokenizer. Other providers use their vLLM-compatible endpoint: with an explicit model this
+ * performs one /llm/tokenize request; without one it discovers /v1/models, tokenizes against every
+ * model once, and combines the largest observed usage with the smallest known context limit.
  */
 export async function measureExternal(
   chat: Chat,
@@ -91,6 +93,26 @@ export async function measureExternal(
   const requestedModel = options.model.trim();
 
   if (requestedModel !== "") {
+    const localModel = await options.localModelResolver?.(requestedModel);
+    if (localModel !== undefined) {
+      const [rendered, detectedRawLimit] = await Promise.all([
+        localModel.applyPromptTemplate(chat),
+        localModel.getContextLength(),
+      ]);
+      const rawLimit =
+        options.contextLimitOverride > 0
+          ? options.contextLimitOverride
+          : detectedRawLimit;
+      const used = await localModel.countTokens(rendered);
+      return {
+        used,
+        rawLimit,
+        reserve: options.reserveTokens,
+        limit: effectiveLimit(rawLimit, options.reserveTokens),
+        modelCount: 1,
+        countMessage: (message) => localModel.countTokens(message.getText()),
+      };
+    }
     const result = await tokenizeExternal(
       options.connection,
       requestedModel,
