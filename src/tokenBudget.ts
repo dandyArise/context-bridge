@@ -1,0 +1,171 @@
+import type { Chat, ChatMessage, LLM, LLMGeneratorHandle } from "@lmstudio/sdk";
+import {
+  listExternalModels,
+  toOpenAIMessages,
+  tokenizeExternal,
+  type ExternalConnection,
+} from "./externalApi";
+
+export type TokenSource = LLM | LLMGeneratorHandle;
+
+export interface ContextMeasurement {
+  used: number;
+  limit: number;
+  rawLimit: number;
+  reserve: number;
+  modelCount: number;
+  countMessage: (message: ChatMessage) => Promise<number>;
+}
+
+export interface ExternalMeasurementOptions {
+  connection: ExternalConnection;
+  model: string;
+  contextLimitOverride: number;
+  reserveTokens: number;
+  signal?: AbortSignal;
+}
+
+export function isLocalLLM(source: TokenSource): source is LLM {
+  const candidate = source as LLM;
+  return (
+    typeof candidate.countTokens === "function" &&
+    typeof candidate.getContextLength === "function" &&
+    typeof candidate.applyPromptTemplate === "function"
+  );
+}
+
+function effectiveLimit(rawLimit: number, reserve: number): number {
+  const limit = rawLimit - reserve;
+  if (limit <= 0) {
+    throw new Error(
+      `Reserved context (${reserve}) must be smaller than the model context length (${rawLimit}).`,
+    );
+  }
+  return limit;
+}
+
+export async function measureLocal(
+  source: LLM,
+  chat: Chat,
+  reserveTokens: number,
+): Promise<ContextMeasurement> {
+  const [rendered, rawLimit] = await Promise.all([
+    source.applyPromptTemplate(chat),
+    source.getContextLength(),
+  ]);
+  const used = await source.countTokens(rendered);
+  return {
+    used,
+    rawLimit,
+    reserve: reserveTokens,
+    // Keep the original LM Studio compaction threshold. The configurable reserve is
+    // applied to tool-result capacity, while external generators reserve it before dispatch.
+    limit: rawLimit,
+    modelCount: 1,
+    countMessage: (message) => source.countTokens(message.getText()),
+  };
+}
+
+function renderedLength(messages: unknown[]): number {
+  return Math.max(1, JSON.stringify(messages).length);
+}
+
+function proportionalCounter(charsPerToken: number) {
+  return (message: ChatMessage): Promise<number> =>
+    Promise.resolve(
+      Math.max(1, Math.ceil(message.toString().length / charsPerToken)),
+    );
+}
+
+/**
+ * Generator handles expose no tokenizer or context length through the plugin SDK. The external
+ * vLLM-compatible endpoint is therefore authoritative. With an explicit model this performs one
+ * /llm/tokenize request. Without one it discovers /v1/models, tokenizes against every model once,
+ * and combines the largest observed usage with the smallest known context limit.
+ */
+export async function measureExternal(
+  chat: Chat,
+  options: ExternalMeasurementOptions,
+): Promise<ContextMeasurement> {
+  const messages = toOpenAIMessages(chat);
+  const requestedModel = options.model.trim();
+
+  if (requestedModel !== "") {
+    const result = await tokenizeExternal(
+      options.connection,
+      requestedModel,
+      messages,
+      options.signal,
+    );
+    const rawLimit =
+      options.contextLimitOverride > 0
+        ? options.contextLimitOverride
+        : result.contextLength;
+    if (rawLimit === undefined) {
+      throw new Error(
+        "/llm/tokenize did not publish a context limit. Configure External context limit override.",
+      );
+    }
+    const charsPerToken = renderedLength(messages) / result.used;
+    return {
+      used: result.used,
+      rawLimit,
+      reserve: options.reserveTokens,
+      limit: effectiveLimit(rawLimit, options.reserveTokens),
+      modelCount: 1,
+      countMessage: proportionalCounter(charsPerToken),
+    };
+  }
+
+  const models = await listExternalModels(options.connection, options.signal);
+  const results: Array<{ used: number; limit?: number }> = [];
+  for (const model of models) {
+    const tokenized = await tokenizeExternal(
+      options.connection,
+      model.id,
+      messages,
+      options.signal,
+    );
+    const discoveredLimit = tokenized.contextLength ?? model.contextLength;
+    results.push({
+      used: tokenized.used,
+      ...(discoveredLimit === undefined ? {} : { limit: discoveredLimit }),
+    });
+  }
+
+  const used = Math.max(...results.map((result) => result.used));
+  const advertisedLimits = results.flatMap((result) =>
+    result.limit === undefined ? [] : [result.limit],
+  );
+  const rawLimit =
+    options.contextLimitOverride > 0
+      ? options.contextLimitOverride
+      : advertisedLimits.length > 0
+        ? Math.min(...advertisedLimits)
+        : undefined;
+  if (rawLimit === undefined) {
+    throw new Error(
+      "No discovered model published a context limit. Configure External context limit override.",
+    );
+  }
+
+  const charsPerToken = renderedLength(messages) / used;
+  return {
+    used,
+    rawLimit,
+    reserve: options.reserveTokens,
+    limit: effectiveLimit(rawLimit, options.reserveTokens),
+    modelCount: models.length,
+    countMessage: proportionalCounter(charsPerToken),
+  };
+}
+
+export async function measureContext(
+  source: TokenSource,
+  chat: Chat,
+  options: ExternalMeasurementOptions,
+): Promise<ContextMeasurement> {
+  return isLocalLLM(source)
+    ? measureLocal(source, chat, options.reserveTokens)
+    : measureExternal(chat, options);
+}

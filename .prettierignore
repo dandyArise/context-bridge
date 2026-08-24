@@ -1,0 +1,5 @@
+node_modules/
+coverage/
+.lmstudio/
+*.js
+*.js.map

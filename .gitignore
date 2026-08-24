@@ -1,0 +1,8 @@
+node_modules/
+coverage/
+.lmstudio/
+*.js
+*.js.map
+!.eslintrc.js
+.context-bridge-state.json
+.context-bridge-chunks.json

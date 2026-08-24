@@ -1,0 +1,7 @@
+{
+  "type": "plugin",
+  "runner": "node",
+  "owner": "dandyarise",
+  "name": "context-bridge",
+  "revision": 1
+}

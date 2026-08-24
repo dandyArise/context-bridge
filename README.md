@@ -1,0 +1,137 @@
+# Context Bridge
+
+## Purpose
+
+Context Bridge is an LM Studio integration that keeps long working chats below their context limit.
+It preserves LM Studio's native local-model path and can compact external generator conversations.
+Its companion `dandyarise/context-bridge-external` provides OpenAI-compatible generation for vLLM,
+LiteLLM, LM Studio Server, and similar endpoints.
+
+## Main capabilities
+
+- Exact local-model measurement through the LM Studio SDK.
+- External-generator measurement through `POST /llm/tokenize`.
+- One tokenize request when an external model ID is configured.
+- When the model ID is empty: `GET /v1/models`, one tokenize request per model, then the safest
+  combination (largest observed prompt and smallest known context window).
+- Optional `/v1/model/info` enrichment for tool choice, function calling, response schema, web,
+  reasoning, and vision capabilities; unsupported providers fall back to `/v1/models`.
+- Configurable hard context override and configurable reserve (`16,000` tokens by default).
+- Source-derived, chunk-cached summaries; summaries are never recursively summarized.
+- MCP request/result pairs are never split; tool payload shape is preserved when text is capped.
+- Optional local transcript/state archive with atomic writes.
+- Companion generator with OpenAI-compatible streaming, reasoning fragments, function calls,
+  optional Bearer authentication, and cancellation.
+
+## Architecture summary
+
+The prediction-loop handler owns compaction and tool-result budgets. For a local LM Studio model it
+uses `applyPromptTemplate`, `countTokens`, and `getContextLength`. For a generator handle, which has
+no tokenizer in the plugin SDK, it calls the configured external `/llm/tokenize` endpoint. The
+separate `context-bridge-external` artifact streams `/v1/chat/completions`. This split is required
+because LM Studio hides generator plugins from Integrations and exposes them as models. The
+displayed chat is never modified; only the prompt copy passed to the selected model is rebuilt.
+
+See [architecture-overview.md](docs/architecture/architecture-overview.md).
+
+## Requirements
+
+- LM Studio with plugin support and `lms` CLI.
+- Node.js 20 or newer for development.
+- An external server implementing `/v1/chat/completions` and `/llm/tokenize` for external use.
+
+## Installation
+
+```powershell
+pnpm install
+pnpm run verify
+.\scripts\install-all.ps1
+```
+
+Enable `dandyarise/context-bridge` in Integrations. Keep a normal local model selected for the local
+path, or select `dandyarise/context-bridge-external` in the model dropdown for an external endpoint.
+
+## Configuration
+
+Global settings, persisted by LM Studio:
+
+- `External OpenAI-compatible endpoint`: base URL ending in `/v1`.
+- `External API key`: optional protected Bearer token.
+
+The integration's per-chat settings include external model ID, context-limit override,
+`16,000`-token reserve, compaction trigger, verbatim tail, summary chunk size, tool cap, and archive
+folder. The generator companion owns temperature and maximum-output settings. Configure the same
+endpoint, API key, and model ID in both artifacts. A zero context override requires
+`/llm/tokenize` or model metadata to report the limit. The reserve lowers the external compaction
+ceiling; for local LM Studio models it protects output/tool capacity without changing the original
+full-context compaction threshold.
+
+List model IDs, context sizes, tokenizer availability, and advertised capabilities without placing
+the key on the command line:
+
+```powershell
+$env:CONTEXT_BRIDGE_API_KEY = 'your-key-if-required'
+pnpm run discover -- http://127.0.0.1:8000/v1
+Remove-Item Env:CONTEXT_BRIDGE_API_KEY
+```
+
+## Local development
+
+```powershell
+pnpm install
+pnpm run typecheck
+pnpm run test
+pnpm run build
+lms dev --no-notify # integration only
+```
+
+## Testing
+
+```powershell
+pnpm run format:check
+pnpm run lint
+pnpm run typecheck
+pnpm run test
+pnpm run build
+```
+
+Tests cover endpoint construction, Bearer-safe URL validation, tokenize response variants, the
+single-model request count, empty-model safe aggregation, MCP cut boundaries, edit invalidation,
+tool-shape preservation, and split SSE frames.
+
+## Build
+
+`pnpm run build` emits CommonJS plugin files at the project root. Generated `.js` and source maps are
+ignored; TypeScript in `src/` is authoritative.
+
+## Deployment
+
+For a local LM Studio installation, run `.\scripts\install-all.ps1`. It installs the integration
+and its companion generator. Neither artifact is a standalone HTTP service or opens a listening
+port.
+
+## Troubleshooting
+
+- `Unexpected endpoint or method (/llm/tokenize)`: the external server does not provide the
+  tokenizer contract; configure an endpoint that does or use a local LM Studio model.
+- `did not publish a context limit`: set `External context limit override` to the deployed limit.
+- `maximum context length`: increase the reserve or lower the verbatim tail/tool-result ceiling.
+- No tools: verify tool plugins are enabled for that chat; Context Bridge reports refused sessions.
+
+See [troubleshooting.md](docs/operations/troubleshooting.md).
+
+## Documentation index
+
+- [Architecture overview](docs/architecture/architecture-overview.md)
+- [System context](docs/architecture/system-context.md)
+- [Container view](docs/architecture/container-view.md)
+- [Component view](docs/architecture/component-view.md)
+- [Data flow](docs/architecture/data-flow.md)
+- [Security](docs/architecture/security.md)
+- [Observability](docs/architecture/observability.md)
+- [Deployment](docs/architecture/deployment.md)
+- [Local development](docs/development/local-development.md)
+- [Testing strategy](docs/development/testing-strategy.md)
+- [Coding standards](docs/development/coding-standards.md)
+- [Runbook](docs/operations/runbook.md)
+- [Troubleshooting](docs/operations/troubleshooting.md)
